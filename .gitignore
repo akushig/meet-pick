@@ -1,0 +1,23 @@
+node_modules
+dist
+.plan.md
+
+# Environment & secrets
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+*.key
+*.pem
+*.secret
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

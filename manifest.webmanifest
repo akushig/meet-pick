@@ -1,0 +1,1 @@
+{"name":"MeetPick - 모임 장소 추천","short_name":"MeetPick","description":"친구들과 모임 장소를 추천해주는 앱","start_url":"/meet-pick/","display":"standalone","background_color":"#f8fafc","theme_color":"#6366f1","lang":"en","scope":"/meet-pick/","icons":[{"src":"icon-192.png","sizes":"192x192","type":"image/png"},{"src":"icon-512.png","sizes":"512x512","type":"image/png"}]}
