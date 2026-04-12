@@ -1,4 +1,4 @@
-export type TransportMode = 'car' | 'subway' | 'bus' | 'walk';
+export type TransportMode = 'car' | 'subway' | 'bus' | 'bike' | 'walk';
 
 export interface Participant {
   id: string;
@@ -15,6 +15,7 @@ export interface Place {
   address: string;
   coord: { lat: number; lng: number };
   reason: string;
+  rank?: number;
 }
 
 export interface Recommendation {
@@ -23,11 +24,19 @@ export interface Recommendation {
   places: Place[];
 }
 
+export interface SelectedPlace {
+  regionIndex: number;
+  placeIndex: number;
+}
+
 export interface Gathering {
   id: string;
   purpose: string;
   description: string;
+  meetingDate: string;
+  meetingTime: string;
   participants: Participant[];
   recommendations?: Recommendation[];
+  selectedPlace?: SelectedPlace;
   createdAt: string;
 }

@@ -4,6 +4,7 @@ const MODES: { value: TransportMode; label: string; icon: string }[] = [
   { value: 'car', label: '자차', icon: '🚗' },
   { value: 'subway', label: '지하철', icon: '🚇' },
   { value: 'bus', label: '버스', icon: '🚌' },
+  { value: 'bike', label: '자전거', icon: '🚲' },
   { value: 'walk', label: '도보', icon: '🚶' },
 ];
 

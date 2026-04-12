@@ -79,6 +79,22 @@ export function fitBounds(map: any, coords: { lat: number; lng: number }[]) {
   map.setBounds(bounds);
 }
 
+export function coordToAddress(lat: number, lng: number): Promise<string> {
+  return new Promise((resolve) => {
+    const geocoder = new window.kakao.maps.services.Geocoder();
+    geocoder.coord2Address(lng, lat, (result: any[], status: string) => {
+      if (status === window.kakao.maps.services.Status.OK && result.length > 0) {
+        const addr = result[0].road_address
+          ? result[0].road_address.address_name
+          : result[0].address.address_name;
+        resolve(addr);
+      } else {
+        resolve(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      }
+    });
+  });
+}
+
 export function searchAddress(address: string): Promise<{ lat: number; lng: number } | null> {
   return new Promise((resolve) => {
     const geocoder = new window.kakao.maps.services.Geocoder();

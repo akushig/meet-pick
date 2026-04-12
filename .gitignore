@@ -4,10 +4,10 @@ dist
 
 # Environment & secrets
 .env
-.env.*
 .env.local
 .env.development
 .env.production
+!.env.example
 *.key
 *.pem
 *.secret
