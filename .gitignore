@@ -21,3 +21,6 @@ dist
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code 로컬 설정 — 권한 허용목록에 API 키가 들어갈 수 있어 추적하지 않는다
+.claude/settings.local.json
