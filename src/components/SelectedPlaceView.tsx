@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Place } from '../types';
 import { loadKakaoMap, createMap, addMarker } from '../services/kakaoMap';
+import { openInKakaoMap } from '../utils/openKakaoMap';
 
 interface Props {
   region: string;
@@ -20,8 +21,7 @@ export default function SelectedPlaceView({ region, place, onClose }: Props) {
   }, [place]);
 
   const handleOpenKakaoMap = () => {
-    const url = `https://map.kakao.com/link/map/${encodeURIComponent(place.name)},${place.coord.lat},${place.coord.lng}`;
-    window.open(url, '_blank');
+    openInKakaoMap(place);
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {

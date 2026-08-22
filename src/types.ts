@@ -7,6 +7,17 @@ export interface Participant {
   departureCoord?: { lat: number; lng: number };
   departureTime: string;
   transportModes: TransportMode[];
+  arrival?: string;
+  arrivalCoord?: { lat: number; lng: number };
+  arrivalTime?: string;
+  arrivalTimeEdited?: boolean;
+  arrivalTransportModes?: TransportMode[];
+}
+
+export interface TravelEstimate {
+  origin: string;
+  names: string[];
+  modes: { mode: string; minutes: number }[];
 }
 
 export interface Place {
@@ -15,6 +26,7 @@ export interface Place {
   address: string;
   coord: { lat: number; lng: number };
   reason: string;
+  travelTimes?: TravelEstimate[];
   rank?: number;
 }
 
@@ -35,8 +47,15 @@ export interface Gathering {
   description: string;
   meetingDate: string;
   meetingTime: string;
+  meetingEndTime?: string;
+  meetingEndTimeEdited?: boolean;
   participants: Participant[];
   recommendations?: Recommendation[];
+  recommendationSummary?: string;
   selectedPlace?: SelectedPlace;
+  regionCount?: number;
+  placesPerRegion?: number;
   createdAt: string;
+  pinned?: boolean;
+  pinnedAt?: string;
 }

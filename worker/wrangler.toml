@@ -2,3 +2,7 @@ name = "meetpick-proxy"
 main = "index.js"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "SHARE_KV"
+id = "dda9b59adbe849b49816f8ba1bace22f"

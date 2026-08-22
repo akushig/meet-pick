@@ -19,19 +19,19 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
       },
-      includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
+      includeAssets: ['favicon-32.png', 'favicon-96.png', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'MeetPick - 모임 장소 추천',
         short_name: 'MeetPick',
         description: '친구들과 모임 장소를 추천해주는 앱',
-        theme_color: '#6366f1',
+        theme_color: '#4E6BD6',
         background_color: '#f8fafc',
         display: 'standalone',
         start_url: '/meet-pick/',
         scope: '/meet-pick/',
         icons: [
-          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' }
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
         ]
       }
     })

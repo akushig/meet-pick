@@ -1,22 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Gathering, Participant } from '../types';
-import { getGathering, upsertGathering, loadSettings, saveSavedParticipant } from '../services/storage';
+import { getGathering, upsertGathering, loadSettings, saveSavedAddress, saveSavedName } from '../services/storage';
 import { searchAddress, loadKakaoMap } from '../services/kakaoMap';
 import { getRecommendations } from '../services/gemini';
 import ParticipantForm from '../components/ParticipantForm';
 import Toast from '../components/Toast';
 import SelectedPlaceView from '../components/SelectedPlaceView';
-import { createShareUrl, copyToClipboard } from '../utils/share';
+import { createShareUrl, copyToClipboard, nativeShare } from '../utils/share';
+
+function addHours(hhmm: string, hours: number): string {
+  if (!hhmm) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = h * 60 + m + hours * 60;
+  const adj = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hh = String(Math.floor(adj / 60)).padStart(2, '0');
+  const mm = String(adj % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
 
 function getDefaultDepartureTime(meetingTime: string): string {
   if (!meetingTime) return '11:00';
-  const [h, m] = meetingTime.split(':').map(Number);
-  const totalMin = h * 60 + m - 60;
-  const adjMin = totalMin < 0 ? totalMin + 1440 : totalMin;
-  const hh = String(Math.floor(adjMin / 60)).padStart(2, '0');
-  const mm = String(adjMin % 60).padStart(2, '0');
-  return `${hh}:${mm}`;
+  return addHours(meetingTime, -1);
+}
+
+function getDefaultEndTime(meetingTime: string): string {
+  return addHours(meetingTime || '12:00', 2);
 }
 
 function newParticipant(meetingTime: string): Participant {
@@ -33,19 +42,29 @@ export default function GatheringPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [loadingStage, setLoadingStage] = useState('');
   const [error, setError] = useState('');
   const [toast, setToast] = useState({ visible: false, message: '' });
   const [showPlaceMap, setShowPlaceMap] = useState(false);
 
   const [gathering, setGathering] = useState<Gathering>(() => {
     const existing = id ? getGathering(id) : undefined;
-    return existing || {
+    if (existing) {
+      // 기존 데이터 하위호환: 종료 시간이 없으면 기본값(+2h) 채움
+      if (!existing.meetingEndTime) {
+        return { ...existing, meetingEndTime: getDefaultEndTime(existing.meetingTime) };
+      }
+      return existing;
+    }
+    const start = '12:00';
+    return {
       id: id || crypto.randomUUID(),
       purpose: '',
       description: '',
       meetingDate: new Date().toISOString().split('T')[0],
-      meetingTime: '12:00',
-      participants: [newParticipant('12:00')],
+      meetingTime: start,
+      meetingEndTime: getDefaultEndTime(start),
+      participants: [newParticipant(start)],
       createdAt: new Date().toISOString(),
     };
   });
@@ -56,12 +75,12 @@ export default function GatheringPage() {
     }
   }, [gathering]);
 
-  // 참여자 정보가 변경될 때 즐겨찾기에 자동 저장
+  // 참여자 정보가 변경될 때 이름·주소를 별도 풀에 자동 저장
   useEffect(() => {
     gathering.participants.forEach(p => {
-      if (p.name && p.departure) {
-        saveSavedParticipant({ name: p.name, departure: p.departure, departureCoord: p.departureCoord });
-      }
+      if (p.name) saveSavedName(p.name);
+      if (p.departure) saveSavedAddress({ address: p.departure, coord: p.departureCoord });
+      if (p.arrival) saveSavedAddress({ address: p.arrival, coord: p.arrivalCoord });
     });
   }, [gathering.participants]);
 
@@ -69,20 +88,66 @@ export default function GatheringPage() {
     setGathering(prev => ({ ...prev, ...fields }));
   };
 
+  const syncArrivalTimes = (participants: Participant[], newEnd: string): Participant[] =>
+    participants.map(p => {
+      if (!p.arrival && !p.arrivalTime) return p;
+      if (p.arrivalTimeEdited) return p;
+      return { ...p, arrivalTime: addHours(newEnd, 1) };
+    });
+
   const handleMeetingTimeChange = (newTime: string) => {
     const defaultDep = getDefaultDepartureTime(newTime);
     const oldDefault = getDefaultDepartureTime(gathering.meetingTime);
-    const updatedParticipants = gathering.participants.map(p =>
+    let updatedParticipants = gathering.participants.map(p =>
       p.departureTime === oldDefault ? { ...p, departureTime: defaultDep } : p
     );
-    updateGathering({ meetingTime: newTime, participants: updatedParticipants });
+
+    // 종료 시간이 수동 수정되지 않았다면 시작+2h로 자동 동기화,
+    // 이어서 미수정 참여자 arrivalTime도 새 종료+1h로 동기화.
+    const next: Partial<Gathering> = { meetingTime: newTime };
+    if (!gathering.meetingEndTimeEdited) {
+      const newEnd = getDefaultEndTime(newTime);
+      next.meetingEndTime = newEnd;
+      updatedParticipants = syncArrivalTimes(updatedParticipants, newEnd);
+    }
+    next.participants = updatedParticipants;
+    updateGathering(next);
+  };
+
+  const handleMeetingEndTimeChange = (newEnd: string) => {
+    const updatedParticipants = syncArrivalTimes(gathering.participants, newEnd);
+    updateGathering({
+      meetingEndTime: newEnd,
+      meetingEndTimeEdited: true,
+      participants: updatedParticipants,
+    });
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      const url = await createShareUrl(gathering, 'detail');
+      const ok = await copyToClipboard(url);
+      if (ok) {
+        setToast({ visible: true, message: '링크가 복사되었습니다' });
+      }
+    } catch (err: any) {
+      setError(err?.message || '링크 생성에 실패했습니다.');
+    }
   };
 
   const handleShare = async () => {
-    const url = createShareUrl(gathering);
-    const ok = await copyToClipboard(url);
-    if (ok) {
-      setToast({ visible: true, message: '공유 링크가 복사되었습니다' });
+    try {
+      const url = await createShareUrl(gathering, 'detail');
+      const result = await nativeShare({
+        title: gathering.purpose || 'MeetPick 모임',
+        text: `${gathering.purpose || '모임'} — ${gathering.meetingDate} ${gathering.meetingTime}`,
+        url,
+      });
+      if (result === 'copied') {
+        setToast({ visible: true, message: '공유 링크가 복사되었습니다' });
+      }
+    } catch (err: any) {
+      setError(err?.message || '공유에 실패했습니다.');
     }
   };
 
@@ -121,6 +186,7 @@ export default function GatheringPage() {
     }
 
     setLoading(true);
+    setLoadingStage('출발지 좌표 확인 중...');
     setError('');
 
     try {
@@ -136,11 +202,16 @@ export default function GatheringPage() {
       const updated = { ...gathering, participants: updatedParticipants };
       setGathering(updated);
 
-      const recommendations = await getRecommendations(settings.geminiApiKey, updated, (sec) => {
-        setError(`분당 요청 한도 도달. ${sec}초 후 자동 재시도합니다...`);
-      });
+      const { summary, recommendations } = await getRecommendations(
+        settings.geminiApiKey,
+        updated,
+        (sec) => {
+          setError(`분당 요청 한도 도달. ${sec}초 후 자동 재시도합니다...`);
+        },
+        (msg) => setLoadingStage(msg)
+      );
       setError('');
-      const final = { ...updated, recommendations, selectedPlace: undefined };
+      const final = { ...updated, recommendations, recommendationSummary: summary, selectedPlace: undefined };
       setGathering(final);
       upsertGathering(final);
 
@@ -149,6 +220,7 @@ export default function GatheringPage() {
       setError(err.message || '추천 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
+      setLoadingStage('');
     }
   };
 
@@ -179,15 +251,28 @@ export default function GatheringPage() {
             </button>
             <h1 className="text-lg font-bold text-gray-800">모임 설정</h1>
           </div>
-          <button
-            onClick={handleShare}
-            className="text-gray-400 hover:text-primary-500 transition-colors"
-            title="모임 공유"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-              <path d="M13 4.5a2.5 2.5 0 11.702 1.737L6.97 9.604a2.518 2.518 0 010 .792l6.733 3.367a2.5 2.5 0 11-.671 1.341l-6.733-3.367a2.5 2.5 0 110-3.474l6.733-3.367A2.52 2.52 0 0113 4.5z" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleCopyLink}
+              className="p-1.5 text-gray-400 hover:text-primary-500 transition-colors rounded-lg"
+              title="링크 복사"
+              aria-label="링크 복사"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+              </svg>
+            </button>
+            <button
+              onClick={handleShare}
+              className="p-1.5 text-gray-400 hover:text-primary-500 transition-colors rounded-lg"
+              title="다른 앱으로 공유"
+              aria-label="다른 앱으로 공유"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                <path d="M13 4.5a2.5 2.5 0 11.702 1.737L6.97 9.604a2.518 2.518 0 010 .792l6.733 3.367a2.5 2.5 0 11-.671 1.341l-6.733-3.367a2.5 2.5 0 110-3.474l6.733-3.367A2.52 2.52 0 0113 4.5z" />
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -205,27 +290,36 @@ export default function GatheringPage() {
           <textarea
             value={gathering.description}
             onChange={e => updateGathering({ description: e.target.value })}
-            placeholder="상세 설명 (선택)"
+            placeholder="상세설명 (예: 주차가능, 노트북 사용, 티타임, 맛집 등)"
             rows={2}
             className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 resize-none"
           />
           <div className="flex gap-2">
-            <div className="flex-1">
+            <div className="flex-[1.4] min-w-0">
               <label className="block text-xs text-gray-500 mb-1">모임 예정일</label>
               <input
                 type="date"
                 value={gathering.meetingDate}
                 onChange={e => updateGathering({ meetingDate: e.target.value })}
-                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                className="w-full px-3 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
               />
             </div>
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 mb-1">모임 예정 시간</label>
+            <div className="flex-1 min-w-0">
+              <label className="block text-xs text-gray-500 mb-1">시작</label>
               <input
                 type="time"
                 value={gathering.meetingTime}
                 onChange={e => handleMeetingTimeChange(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                className="w-full px-2 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <label className="block text-xs text-gray-500 mb-1">종료</label>
+              <input
+                type="time"
+                value={gathering.meetingEndTime || ''}
+                onChange={e => handleMeetingEndTimeChange(e.target.value)}
+                className="w-full px-2 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
               />
             </div>
           </div>
@@ -248,6 +342,7 @@ export default function GatheringPage() {
             <ParticipantForm
               key={p.id}
               participant={p}
+              meetingEndTime={gathering.meetingEndTime}
               onChange={(updated) => updateParticipant(i, updated)}
               onRemove={() => removeParticipant(i)}
             />
@@ -314,7 +409,7 @@ export default function GatheringPage() {
           {loading ? (
             <span className="flex items-center justify-center gap-2">
               <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-              AI가 장소를 찾고 있어요...
+              {loadingStage || 'AI가 장소를 찾고 있어요...'}
             </span>
           ) : (
             '만남 장소 추천받기'

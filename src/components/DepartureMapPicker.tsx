@@ -3,11 +3,12 @@ import { loadKakaoMap, addMarker, coordToAddress } from '../services/kakaoMap';
 
 interface Props {
   coord?: { lat: number; lng: number };
+  label?: string;
   onSelect: (coord: { lat: number; lng: number }, address: string) => void;
   onClose: () => void;
 }
 
-export default function DepartureMapPicker({ coord, onSelect, onClose }: Props) {
+export default function DepartureMapPicker({ coord, label = '출발지', onSelect, onClose }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -20,11 +21,11 @@ export default function DepartureMapPicker({ coord, onSelect, onClose }: Props) 
     if (markerRef.current) {
       markerRef.current.setMap(null);
     }
-    markerRef.current = addMarker(map, lat, lng, '출발지');
+    markerRef.current = addMarker(map, lat, lng, label);
     const address = await coordToAddress(lat, lng);
     setSelectedAddress(address);
     onSelect({ lat, lng }, address);
-  }, [onSelect]);
+  }, [onSelect, label]);
 
   useEffect(() => {
     if (!mapRef.current) return;
